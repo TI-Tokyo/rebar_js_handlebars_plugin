@@ -15,7 +15,6 @@ init(State) ->
     Provider = providers:create([
             {name, ?PROVIDER},
             {module, ?MODULE},
-            {namespace, js_concatenate},
             {bare, false},
             {deps, ?DEPS},
             {example, "rebar3 rebar_js_handlebars_plugin"},
@@ -44,7 +43,7 @@ do(State) ->
          OutDir = filename:join([AppDir, option(out_dir, Opts)]),
          DocRoot = filename:join([AppDir, option(doc_root, Opts)]),
          Targets = [{normalize_path(Destination, OutDir),
-                     normalize_paths(Sources, DocRoot), Opts} || {Destination, Sources} <- Templates],
+                     lists:zip(Sources, normalize_paths(Sources, DocRoot)), Opts} || {Destination, Sources} <- Templates],
          build_each(Targets)
      end || AppInfo <- Apps],
     {ok, State}.
@@ -72,8 +71,7 @@ handlebars(Name, Body, Target, Compiler) ->
 read(File) ->
     case file:read_file(File) of
         {ok, Binary} ->
-           list_to_binary(re:replace(binary_to_list(Binary), "\\n+", "",
-                    [global]));
+           Binary;
         {error, Reason} ->
            rebar_api:error("Reading asset ~s failed: ~p", [File, Reason]),
            rebar_utils:abort()
@@ -91,11 +89,12 @@ template_name(Source, SourceExt) ->
 build_each([]) ->
     ok;
 build_each([{Destination, Sources, Options} | Rest]) ->
+    rebar_api:debug("building ~p from ~p, options ~p", [Destination, Sources, Options]),
     Target = option(target, Options),
     Compiler = option(compiler, Options),
     SourceExt = option(source_ext, Options),
-    Contents = [handlebars(template_name(SourceName, SourceExt),
-                           read(SourceFile), Target, Compiler) || {SourceName, SourceFile} <- Sources],
+    Contents = [handlebars(template_name(SrcName, SourceExt),
+                           re:replace(read(SrcFile), "\n", "", [global]), Target, Compiler) || {SrcName, SrcFile} <- Sources],
     Concatenated = rebar_js_concatenator_plugin:concatenate(Contents),
     case file:write_file(Destination, Concatenated, [write]) of
         ok ->
